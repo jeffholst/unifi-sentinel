@@ -102,4 +102,7 @@ def needs_for(areas: Optional[Iterable[str]], since_seconds: int) -> Needs:
         health=bool(chosen & {"health", "wan", "devices"}),
         speedtests="wan" in chosen,
         events=EventQuery(since_seconds) if "events" in chosen else None,
+        # the legacy device list and each device's detail and statistics are the dominant cost on a big site
+        legacy_devices=None if chosen & {"devices", "ports", "wifi"} else False,
+        device_extras=None if chosen & {"devices", "ports"} else False,
     )

@@ -198,17 +198,17 @@ uv run unifi-sentinel.py diagnose --skip events      # everything except the eve
 
 The reservation checks read the legacy `stat/alluser` and `rest/networkconf` endpoints (the same data as `query reservations`); offline clients are checked for duplicate and out-of-subnet reservations (a reservation whose network cannot be resolved is skipped for the subnet check) and for **being offline for too long**: a reserved client that is not connected and was last seen `reserved_offline_warn_days` (default 1) days ago or more is a warning, and `reserved_offline_critical_days` (default 7) or more is critical, so a server or appliance that went quiet does not stay invisible. A reservation with no last-seen time is reported once as info. UniFi devices are left to the device checks. A client that is meant to be off (a laptop, a seasonal device) belongs in the ignore list: `subject = "travel-laptop"`, `message = "is offline"`. `query reservations --offline` lists exactly the reservations this check reports, so you can inspect them before relying on the alerts.
 
-**Choosing checks: `--only` and `--skip`.** The checks are grouped into **areas**, named after their finding codes. `--only AREA[,AREA...]` runs just those areas and `--skip AREA[,AREA...]` runs all but those (both can be repeated and take comma-separated names, in any case; giving both is a usage error, exit 64, as is a name that is not an area, which lists the valid ones). Only the data the chosen checks need is read.
+**Choosing checks: `--only` and `--skip`.** The checks are grouped into **areas**, named after their finding codes. `--only AREA[,AREA...]` runs just those areas and `--skip AREA[,AREA...]` runs all but those (both can be repeated and take comma-separated names, in any case; giving both is a usage error, exit 64, as is a name that is not an area, which lists the valid ones). Only the data the chosen checks need is read: a selection without `devices` or `ports` makes no per-device requests, and one without `devices`, `ports` or `wifi` skips the legacy device list.
 
-| Area | Codes | Reads beyond devices and clients |
+| Area | Codes | Reads beyond the device list and connected clients |
 | ---- | ----- | -------------------------------- |
-| `devices` | `device.*`, `controller.*` | health (for devices waiting to be adopted) |
+| `devices` | `device.*`, `controller.*` | the legacy device list, each device's detail and statistics, and health (for devices waiting to be adopted) |
 | `health` | `health.*`, `internet.*` | health |
 | `wan` | `wan.*` | health, speedtests |
-| `clients` | `client.*`, `ip.*` | nothing |
+| `clients` | `client.*`, `ip.*` | nothing (no legacy device list and no per-device reads) |
 | `reservations` | `reservation.*` | client history and network configuration |
-| `ports` | `port.*`, `link.*` | nothing |
-| `wifi` | `wifi.*` | nothing |
+| `ports` | `port.*`, `link.*` | the legacy device list and each device's detail (for link speeds) |
+| `wifi` | `wifi.*` | the legacy device list (radio statistics) |
 | `events` | `event.*` | the event log (the one POST) and the reservations, to name who holds a conflicting address |
 
 A few checks report in two areas (the IP-conflict and duplicate-address checks name reservations, the randomized-MAC checks cover both `reservations` and `clients`), so a finding appears with the area its code belongs to and only when that area is selected. `--skip events` sends no event-log request, and `--no-events` is the same as `--skip events`. Exit codes, `--fail-on`, the ignore list and `--show-ignored` apply to the findings that were produced. The text output ends with a `Checked: ... (not checked: ...)` line when you chose areas, so "No issues found." is not mistaken for a clean bill of health; `--json` always has `areas`, the list of the areas that ran (all eight for a full run). With `--notify`, a finding of an area that did not run is neither new nor recovered and its remembered state is left as it was, so `diagnose --only ports --notify` never announces that problems in other areas were fixed; `--notify-baseline` after a partial run keeps what was recorded for the other areas.

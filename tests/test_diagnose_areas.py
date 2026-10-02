@@ -125,14 +125,19 @@ def test_findings_of_another_area_that_a_check_also_emits_are_dropped(fake_clien
     assert "controller.pending_adoption" in devices and {area_of(c) for c in devices} == {"devices"}
 
 
+LEAN = {"legacy_devices": False, "device_extras": False}      # no legacy device list, no per-device detail
+
+
 @pytest.mark.parametrize("areas, expected", [
     (["ports"], Needs()),
-    (["wifi"], Needs()),
-    (["clients"], Needs()),
-    (["health"], Needs(health=True)),
+    (["wifi"], Needs(device_extras=False)),
+    (["clients"], Needs(**LEAN)),
+    (["health"], Needs(health=True, **LEAN)),
     (["devices"], Needs(health=True)),
-    (["wan"], Needs(health=True, speedtests=True)),
-    (["reservations"], Needs(reservations=True)),
+    (["wan"], Needs(health=True, speedtests=True, **LEAN)),
+    (["reservations"], Needs(reservations=True, **LEAN)),
+    (["ports", "wan"], Needs(health=True, speedtests=True)),
+    (["wifi", "clients"], Needs(device_extras=False)),
 ])
 def test_what_a_selection_reads(areas, expected):
     assert needs_for(areas, 3600) == expected
@@ -144,6 +149,7 @@ def test_the_default_reads_everything_and_events_use_the_window():
     assert needs.events is not None and needs.events.since_seconds == 7200
     assert needs_for(["events"], 60).events.since_seconds == 60 and needs_for(["ports"], 60).events is None
     assert needs_for(["events"], 60).reservations                  # an IP conflict names who holds the reservation
+    assert needs_for(None, 60).legacy_devices is None and needs_for(None, 60).device_extras is None
 
 
 # -- the options -----------------------------------------------------------------------------------------------
@@ -253,25 +259,29 @@ def test_no_events_is_the_same_as_skip_events(fake_client, monkeypatch, capsys):
 
 # -- what each selection reads from the controller ---------------------------------------------------------------
 
-@pytest.mark.parametrize("argv, kinds, posts", [
-    (["--only", "ports"], set(), False),
-    (["--only", "wifi"], set(), False),
-    (["--only", "clients"], set(), False),
-    (["--only", "health"], {"health"}, False),
-    (["--only", "devices"], {"health"}, False),
-    (["--only", "wan"], {"health", "speedtests"}, False),
-    (["--only", "reservations"], {"alluser", "networkconf"}, False),
-    (["--only", "events"], {"alluser", "networkconf"}, True),
-    (["--skip", "events"], {"alluser", "networkconf", "health", "speedtests"}, False),
-    (["--skip", "wan,reservations"], {"health", "alluser", "networkconf"}, True),   # events still need them
+@pytest.mark.parametrize("argv, kinds, posts, legacy, details", [
+    (["--only", "ports"], set(), False, True, True),
+    (["--only", "wifi"], set(), False, True, False),
+    (["--only", "clients"], set(), False, False, False),
+    (["--only", "health"], {"health"}, False, False, False),
+    (["--only", "devices"], {"health"}, False, True, True),
+    (["--only", "wan"], {"health", "speedtests"}, False, False, False),
+    (["--only", "reservations"], {"alluser", "networkconf"}, False, False, False),
+    (["--only", "events"], {"alluser", "networkconf"}, True, False, False),
+    (["--skip", "events"], {"alluser", "networkconf", "health", "speedtests"}, False, True, True),
+    (["--skip", "wan,reservations"], {"health", "alluser", "networkconf"}, True, True, True),    # events need them
 ])
-def test_a_selection_reads_only_what_its_checks_need(fake_client, monkeypatch, capsys, argv, kinds, posts):
+def test_a_selection_reads_only_what_its_checks_need(fake_client, monkeypatch, capsys, argv, kinds, posts, legacy,
+                                                     details):
     from test_needs import BASE, reads
 
     run(fake_client, monkeypatch, ["diagnose", *argv])
     capsys.readouterr()
-    assert reads(fake_client) - {"events"} == BASE | kinds
+    base = BASE if legacy else BASE - {"legacy-devices"}
+    assert reads(fake_client) - {"events"} == base | kinds
     assert bool(fake_client.session.posts) is posts
+    per_device = [p for p in fake_client.session.calls if "/devices/" in p and not p.endswith("/devices")]
+    assert len(per_device) == (8 if details else 0)                 # a detail and a statistics read for 4 devices
 
 
 # -- notifications: skipped areas are neither new nor recovered ---------------------------------------------------
